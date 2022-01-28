@@ -60,11 +60,11 @@ rtrn = pure
 
 {-# INLINE[0] rtrnFunc #-}
 rtrnFunc :: (Nondet a -> Nondet b) -> Nondet (a --> b)
-rtrnFunc = pure . Func
+rtrnFunc = pure
 
 {-# INLINE[0] app #-}
 app :: Nondet (a --> b) -> Nondet a -> Nondet b
-app mf ma = mf >>= \(Func f) -> f ma
+app mf ma = mf >>= \f -> f ma
 
 -- HACK:
 -- RankNTypes are not really supported for various reasons,
@@ -82,11 +82,11 @@ app mf ma = mf >>= \(Func f) -> f ma
 -- accomodate such a RankN type.
 {-# INLINE[0] rtrnFuncUnsafePoly #-}
 rtrnFuncUnsafePoly :: forall a b a'. (a' -> Nondet b) -> Nondet (a --> b)
-rtrnFuncUnsafePoly f = pure (Func (unsafeCoerce f :: Nondet a -> Nondet b))
+rtrnFuncUnsafePoly f = pure (unsafeCoerce f :: Nondet a -> Nondet b)
 
 {-# INLINE[0] appUnsafePoly #-}
 appUnsafePoly :: forall a b a'. Nondet (a --> b) -> a' -> Nondet b
-appUnsafePoly mf ma = mf >>= \(Func f) -> (unsafeCoerce f :: a' -> Nondet b) ma
+appUnsafePoly mf ma = mf >>= \f -> (unsafeCoerce f :: a' -> Nondet b) ma
 
 {-# INLINE[0] fmp #-}
 fmp :: (a -> b) -> Nondet a -> Nondet b
@@ -141,10 +141,7 @@ allValues :: Nondet a -> Tree a
 allValues = runLazyT . unNondet
 
 infixr 0 -->
-newtype a --> b = Func (Nondet a -> Nondet b)
-
-instance (Sharing m) => Shareable m (a --> b) where
-  shareArgs (Func f) = fmap Func (shareArgs f)
+type a --> b = Nondet a -> Nondet b
 
 instance (Normalform Nondet a1 a2, Normalform Nondet b1 b2)
   => Normalform Nondet (a1 --> b1) (a2 -> b2) where
@@ -152,7 +149,7 @@ instance (Normalform Nondet a1 a2, Normalform Nondet b1 b2)
       mf >> return (error "Plugin Error: Cannot capture function types")
     liftE mf = do
       f <- mf
-      return (Func (liftE . fmap f . nf))
+      return (liftE . fmap f . nf)
 
 -- | Lift a unary function with the lifting scheme of the plugin.
 liftNondet1 :: (a -> b) -> Nondet (a --> b)
@@ -165,15 +162,15 @@ liftNondet2 f = rtrnFunc (\a  -> rtrnFunc (\b  ->
 
 -- | Apply a lifted 2-ary function to its lifted arguments.
 apply2 :: Nondet (a --> b --> c) -> Nondet a -> Nondet b -> Nondet c
-apply2 f a b = app f a >>= \(Func f') -> f' b
+apply2 f a b = app f a >>= \f' -> f' b
 
 -- | Apply a lifted 2-ary function to its arguments, where just the
 -- first argument has to be lifted.
 apply2Unlifted :: Nondet (a --> b --> c)
                -> Nondet a -> b -> Nondet c
-apply2Unlifted f a b = app f a >>= \(Func f') -> f' (return b)
+apply2Unlifted f a b = app f a >>= \f' -> f' (return b)
 
 -- | Apply a lifted 3-ary function to its lifted arguments.
 apply3 :: Nondet (a --> b --> c --> d)
        -> Nondet a -> Nondet b -> Nondet c -> Nondet d
-apply3 f a b c = apply2 f a b >>= \(Func f') -> f' c
+apply3 f a b c = apply2 f a b >>= \f' -> f' c

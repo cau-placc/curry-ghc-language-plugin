@@ -503,10 +503,7 @@ mkHsWrap WpHole e = e
 mkHsWrap w      e = XExpr (WrapExpr (HsWrap w e))
 
 splitMyFunTy :: TyCon -> TyCon -> Type -> (Type, Type)
-splitMyFunTy mtc ftc (coreView -> Just ty)    = splitMyFunTy mtc ftc ty
-splitMyFunTy mtc ftc (TyConApp tc [ty1, ty2])
-  | tc == ftc = (mkTyConApp mtc [ty1], mkTyConApp mtc [ty2])
-  | otherwise = error $ showSDocUnsafe $ ppr (tc, ftc, ty1, ty2)
-splitMyFunTy _   _   ty = error $ showSDocUnsafe $ ppr ty
+splitMyFunTy _ _    (coreView -> Just ty) = let (_, b, c) = splitFunTy ty in (b, c)
+splitMyFunTy _ _ ty@(coreView -> Nothing) = let (_, b, c) = splitFunTy ty in (b, c)
 
 {- HLINT ignore "Reduce duplication "-}

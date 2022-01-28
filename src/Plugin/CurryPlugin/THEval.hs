@@ -83,7 +83,7 @@ genEval sma fname [] = do
   return (AppE (AppE rEff sma) (VarE fname))
 genEval sma fname args = do
   rEff  <- [| \mode inn f -> modeOp mode $
-                  allValuesNF (f >>= \(Func f') -> inn f') |]
+                  allValuesNF (f >>= \f' -> inn f') |]
   inner <- genHelp args
   return (foldl AppE rEff [sma, inner, VarE fname])
   where
@@ -93,7 +93,7 @@ genEval sma fname args = do
       ex <- [| \vv vx -> vx (liftE (return vv)) |]
       return (AppE ex (VarE v))
     genHelp ((v,_):rest) = do
-      ex <- [| \inn vv vx -> vx (liftE (return vv)) >>= \(Func f) -> inn f |]
+      ex <- [| \inn vv vx -> vx (liftE (return vv)) >>= \f -> inn f |]
       inner <- genHelp rest
       return (foldl AppE ex [inner, VarE v])
 

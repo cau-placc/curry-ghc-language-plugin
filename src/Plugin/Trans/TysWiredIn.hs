@@ -92,10 +92,10 @@ loadAdditional = do
 
   -- And again for (->)
   let altF = unrestrictedFunTyCon
-  newF <- getTyCon builtInModule ":->"
+  let newF = unrestrictedFunTyCon
 
   let altFR = funTyCon
-  newFR <- getTyCon builtInModule ":-->"
+  let newFR = funTyCon
 
   return [ (altH, newH), (altR, newR), (altI, newI), (altA, newA)
          , (altS, newS), (altF, newF), (altFR, newFR) ]
