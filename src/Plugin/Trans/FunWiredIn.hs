@@ -111,6 +111,7 @@ wiredIn :: [RdrName]
 wiredIn =
   [ mkOrig gHC_CLASSES (mkVarOcc "and")
   , mkOrig gHC_CLASSES (mkVarOcc "not")
+  , mkOrig gHC_BASE    (mkVarOcc "otherwise")
   , mkOrig gHC_PRIM    (mkVarOcc "coerce")
   , mkOrig mONAD       (mkVarOcc "guard")
   , mkOrig gHC_BASE    (mkVarOcc "map")

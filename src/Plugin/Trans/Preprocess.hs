@@ -12,7 +12,7 @@ rewrites of selected expressions.
 -}
 module Plugin.Trans.Preprocess (preprocessBinding) where
 
-import Data.Syb
+import Data.Generics
 
 import GHC.Plugins
 import GHC.Hs.Binds

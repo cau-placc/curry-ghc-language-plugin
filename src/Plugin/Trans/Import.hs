@@ -66,10 +66,10 @@ isDataKind :: (Module, [ImportedBy]) -> Bool
 isDataKind (Module u n, _) =
   mkModuleName "Data.Kind" == n && u == baseUnit
 
--- | Get any 'NondetTag' module annotations for a given module
+-- | Get any 'EffectTag' module annotations for a given module
 -- and the source span of the import declaration, if available.
 getAnnFor :: Unit -> HomePackageTable -> AnnEnv -> Module -> [ImportedBy]
-          -> (Module, [NondetTag], Maybe SrcSpan)
+          -> (Module, [EffectTag], Maybe SrcSpan)
 getAnnFor unit modinfo annsExt mdl imps
   | unit == moduleUnit mdl = case lookupHpt modinfo (moduleName mdl) of
       Nothing   -> panicAnyUnsafe "Cannot find info for module" mdl
@@ -90,7 +90,7 @@ importSpanMaybe ImportedBySystem   = Nothing
 
 -- | Classify a module import as ok or failed.
 -- If it is classified as failed, then the span of the import is added as well.
-classifyWithLoadResult :: Module -> [NondetTag] -> Maybe SrcSpan
+classifyWithLoadResult :: Module -> [EffectTag] -> Maybe SrcSpan
                        -> IfaceLoadResult
 classifyWithLoadResult mdl anns mspan =
   if notNull anns

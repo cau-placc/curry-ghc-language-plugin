@@ -13,7 +13,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RankNTypes                 #-}
 {-|
-Module      : Plugin.CurryPlugin.Monad
+Module      : Plugin.ParsePlugin.Monad
 Description : Convenience wrapper for the effect
 Copyright   : (c) Kai-Oliver Prott (2020)
 Maintainer  : kai.prott@hotmail.de
@@ -23,47 +23,90 @@ convenicence functions.
 The monad type is a wrapper over the
 'Lazy' type from 'Plugin.Effect.CurryEffect'.
 -}
-module Plugin.CurryPlugin.Monad
-  ( Nondet(..), type (-->)(..), (?), failed, share
-  , SearchMode(..)
-  , Normalform(..), modeOp, allValues, allValuesNF
-  , NondetTag(..)
-  , liftNondet1, liftNondet2
+module Plugin.ParsePlugin.Monad
+  ( Parse(..), type (-->)(..), share
+  , Normalform(..)
+  , EffectTag(..)
+  , parse
+  , anyChar, isEOF, eof
+  , liftParse1, liftParse2
   , app, apply2, apply2Unlifted, apply3
   , bind, rtrn, rtrnFunc, fmp, shre, shreTopLevel, seqValue
   , rtrnFuncUnsafePoly, appUnsafePoly )
   where
 
-import Language.Haskell.TH.Syntax
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Trans
+import Data.Bifunctor
 import Unsafe.Coerce
 
 import Plugin.Effect.Classes
-import Plugin.CurryPlugin.Tree
 import Plugin.Effect.Annotation
 import Plugin.Effect.Transformers
 
--- | The actual monad for nondeterminism used by the plugin.
-newtype Nondet a = Nondet { unNondet :: LazyT Nondet Tree a }
+newtype ParseP a = ParseP { unParseP :: String -> [(String, a)] }
+  deriving Functor
+
+instance Applicative ParseP where 
+  pure a = ParseP (\s -> pure (s, a))
+
+  ParseP fa <*> ParseP aa = ParseP $ \s -> 
+    concatMap (\(s', f) -> map (second f) (aa s')) (fa s)
+
+instance Monad ParseP where 
+  ParseP am >>= f = ParseP $ \s ->
+    concatMap (\(s', a) -> unParseP (f a) s') (am s)
+
+instance Alternative ParseP where 
+  empty = ParseP (const [])
+
+  ParseP a <|> ParseP b = ParseP $ \s -> 
+    a s ++ b s
+
+instance MonadPlus ParseP where
+
+-- | The actual monad for parsing used by the plugin.
+newtype Parse a = Parse { unParse :: NameT Parse ParseP a }
   deriving (Functor, Applicative, Monad, Alternative, MonadPlus, Sharing)
-    via LazyT Nondet Tree
+    via NameT Parse ParseP
   deriving anyclass (SharingTop)
 
+parse :: Normalform Parse a1 a2 => Parse a1 -> String -> [(String, a2)]
+parse x s = unParseP (runNameT (unParse (nf x))) s 
+
+anyChar :: Parse Char 
+anyChar = Parse $ lift $ ParseP $ \s -> 
+  case s of 
+    []     -> []
+    (x:xs) -> [(xs, x)]
+
+eof :: Parse ()
+eof = Parse $ lift $ ParseP $ \s ->
+  case s of
+    [] -> [([], ())]
+    _  -> []
+
+isEOF :: Parse Bool 
+isEOF = Parse $ lift $ ParseP $ \s ->
+  case s of
+    [] -> [([], True)]
+    xs -> [(xs, False)]
+
 {-# INLINE[0] bind #-}
-bind :: Nondet a -> (a -> Nondet b) -> Nondet b
+bind :: Parse a -> (a -> Parse b) -> Parse b
 bind = (>>=)
 
 {-# INLINE[0] rtrn #-}
-rtrn :: a -> Nondet a
+rtrn :: a -> Parse a
 rtrn = pure
 
 {-# INLINE[0] rtrnFunc #-}
-rtrnFunc :: (Nondet a -> Nondet b) -> Nondet (a --> b)
+rtrnFunc :: (Parse a -> Parse b) -> Parse (a --> b)
 rtrnFunc = pure . Func
 
 {-# INLINE[0] app #-}
-app :: Nondet (a --> b) -> Nondet a -> Nondet b
+app :: Parse (a --> b) -> Parse a -> Parse b
 app mf ma = mf >>= \(Func f) -> f ma
 
 -- HACK:
@@ -81,27 +124,27 @@ app mf ma = mf >>= \(Func f) -> f ma
 -- To remedy this, we provide the following two functions using unsafeCoerce to
 -- accomodate such a RankN type.
 {-# INLINE[0] rtrnFuncUnsafePoly #-}
-rtrnFuncUnsafePoly :: forall a b a'. (a' -> Nondet b) -> Nondet (a --> b)
-rtrnFuncUnsafePoly f = pure (Func (unsafeCoerce f :: Nondet a -> Nondet b))
+rtrnFuncUnsafePoly :: forall a b a'. (a' -> Parse b) -> Parse (a --> b)
+rtrnFuncUnsafePoly f = pure (Func (unsafeCoerce f :: Parse a -> Parse b))
 
 {-# INLINE[0] appUnsafePoly #-}
-appUnsafePoly :: forall a b a'. Nondet (a --> b) -> a' -> Nondet b
-appUnsafePoly mf ma = mf >>= \(Func f) -> (unsafeCoerce f :: a' -> Nondet b) ma
+appUnsafePoly :: forall a b a'. Parse (a --> b) -> a' -> Parse b
+appUnsafePoly mf ma = mf >>= \(Func f) -> (unsafeCoerce f :: a' -> Parse b) ma
 
 {-# INLINE[0] fmp #-}
-fmp :: (a -> b) -> Nondet a -> Nondet b
+fmp :: (a -> b) -> Parse a -> Parse b
 fmp = fmap
 
 {-# INLINE[0] shre #-}
-shre :: Shareable Nondet a => Nondet a -> Nondet (Nondet a)
+shre :: Parse a -> Parse (Parse a)
 shre = share
 
 {-# INLINE[0] shreTopLevel #-}
-shreTopLevel :: (Int, String) -> Nondet a -> Nondet a
+shreTopLevel :: (Int, String) -> Parse a -> Parse a
 shreTopLevel = shareTopLevel
 
 {-# INLINE seqValue #-}
-seqValue :: Nondet a -> Nondet b -> Nondet b
+seqValue :: Parse a -> Parse b -> Parse b
 seqValue a b = a >>= \a' -> a' `seq` b
 
 {-# RULES
@@ -110,44 +153,14 @@ seqValue a b = a >>= \a' -> a' `seq` b
   #-}
   -- "bind/rtrn'let"   forall e x. let b = e in rtrn x = rtrn (let b = e in x)
 
--- | Nondeterministic failure
-failed :: Shareable Nondet a => Nondet a
-failed = mzero
-
-infixr 0 ?
-{-# INLINE (?) #-}
--- | Nondeterministic choice
-(?) :: Shareable Nondet a => Nondet (a --> a --> a)
-(?) = rtrnFunc $ \t1 -> rtrnFunc $ \t2 -> t1 `mplus` t2
-
--- | Enumeration of available search modes.
-data SearchMode = DFS -- ^ depth-first search
-                | BFS -- ^ breadth-first search
-  deriving Lift
-
--- | Function to map the search type to the function implementing it.
-modeOp :: SearchMode -> Tree a -> [a]
-modeOp DFS = dfs
-modeOp BFS = bfs
-
--- | Collect the results of a nondeterministic computation
--- as their normal form in a tree.
-allValuesNF :: Normalform Nondet a b
-            => Nondet a -> Tree b
-allValuesNF = allValues . nf
-
--- | Collect the results of a nondeterministic computation in a tree.
-allValues :: Nondet a -> Tree a
-allValues = runLazyT . unNondet
-
 infixr 0 -->
-newtype a --> b = Func (Nondet a -> Nondet b)
+newtype a --> b = Func (Parse a -> Parse b)
 
 instance (Sharing m) => Shareable m (a --> b) where
   shareArgs (Func f) = fmap Func (shareArgs f)
 
-instance (Normalform Nondet a1 a2, Normalform Nondet b1 b2)
-  => Normalform Nondet (a1 --> b1) (a2 -> b2) where
+instance (Normalform Parse a1 a2, Normalform Parse b1 b2)
+  => Normalform Parse (a1 --> b1) (a2 -> b2) where
     nf    mf =
       mf >> return (error "Plugin Error: Cannot capture function types")
     liftE mf = do
@@ -155,25 +168,25 @@ instance (Normalform Nondet a1 a2, Normalform Nondet b1 b2)
       return (Func (liftE . fmap f . nf))
 
 -- | Lift a unary function with the lifting scheme of the plugin.
-liftNondet1 :: (a -> b) -> Nondet (a --> b)
-liftNondet1 f = rtrnFunc (\a -> a >>= \a' -> return (f a'))
+liftParse1 :: (a -> b) -> Parse (a --> b)
+liftParse1 f = rtrnFunc (\a -> a >>= \a' -> return (f a'))
 
 -- | Lift a 2-ary function with the lifting scheme of the plugin.
-liftNondet2 :: (a -> b -> c) -> Nondet (a --> b --> c)
-liftNondet2 f = rtrnFunc (\a  -> rtrnFunc (\b  ->
+liftParse2 :: (a -> b -> c) -> Parse (a --> b --> c)
+liftParse2 f = rtrnFunc (\a  -> rtrnFunc (\b  ->
                 a >>=  \a' -> b >>=     \b' -> return (f a' b')))
 
 -- | Apply a lifted 2-ary function to its lifted arguments.
-apply2 :: Nondet (a --> b --> c) -> Nondet a -> Nondet b -> Nondet c
+apply2 :: Parse (a --> b --> c) -> Parse a -> Parse b -> Parse c
 apply2 f a b = app f a >>= \(Func f') -> f' b
 
 -- | Apply a lifted 2-ary function to its arguments, where just the
 -- first argument has to be lifted.
-apply2Unlifted :: Nondet (a --> b --> c)
-               -> Nondet a -> b -> Nondet c
+apply2Unlifted :: Parse (a --> b --> c)
+               -> Parse a -> b -> Parse c
 apply2Unlifted f a b = app f a >>= \(Func f') -> f' (return b)
 
 -- | Apply a lifted 3-ary function to its lifted arguments.
-apply3 :: Nondet (a --> b --> c --> d)
-       -> Nondet a -> Nondet b -> Nondet c -> Nondet d
+apply3 :: Parse (a --> b --> c --> d)
+       -> Parse a -> Parse b -> Parse c -> Parse d
 apply3 f a b c = apply2 f a b >>= \(Func f') -> f' c

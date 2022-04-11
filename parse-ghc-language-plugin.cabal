@@ -1,6 +1,6 @@
 cabal-version: 3.0
-name:          curry-ghc-language-plugin
-synopsis:      A compiler plugin to provide nondeterminism as a language feature
+name:          parse-ghc-language-plugin
+synopsis:      A compiler plugin to provide parsing as a language feature
 version:       0.1.0.0
 license:       BSD-3-Clause
 license-file:  LICENSE
@@ -10,16 +10,6 @@ author:        Kai-Oliver Prott
 category:      Language
 build-type:    Simple
 stability:     experimental
-
-description:
-  This compiler plugin for GHC enables the use of nondeterminism with
-  call-time-choice as a language feauture.
-  It can be activated per-module and provides the user with an
-  operator "(?) :: a -> a -> a",
-  that nondeterministically chooses between its arguments.
-
-  The user can get all values of a particular nondeterministic computation from
-  within normal Haskell code by using the function "eval".
 
 extra-source-files:
   README.md
@@ -41,6 +31,7 @@ common deps
     mtl              -any,
     extra            -any,
     split            -any,
+    syb              -any,
   ghc-options:      -Wall
   default-language: Haskell2010
   other-extensions:
@@ -69,7 +60,6 @@ common deps
     MultiParamTypeClasses,
     TemplateHaskell
   other-modules:
-    Data.Syb
     Plugin.Dump
     Plugin.Trans.Config
     Plugin.Trans.Coerce
@@ -103,15 +93,12 @@ library
     Plugin.Effect.Transformers
     Plugin.Effect.Annotation
 
-    Plugin.CurryPlugin
-    Plugin.CurryPlugin.Prelude
-    Plugin.CurryPlugin.BuiltIn
-    Plugin.CurryPlugin.Encapsulation
-    Plugin.CurryPlugin.Monad
+    Plugin.ParsePlugin
+    Plugin.ParsePlugin.Prelude
+    Plugin.ParsePlugin.BuiltIn
+    Plugin.ParsePlugin.Monad
   other-modules:
-    Plugin.CurryPlugin.ForeignExport
-    Plugin.CurryPlugin.THEval
-    Plugin.CurryPlugin.Tree
+    Plugin.ParsePlugin.ForeignExport
 
 test-suite tests
   import:         deps
@@ -126,17 +113,14 @@ test-suite tests
     Tests.Bang
 
     Plugin.LanguagePlugin
-    Plugin.CurryPlugin
-    Plugin.CurryPlugin.BuiltIn
-    Plugin.CurryPlugin.ForeignExport
-    Plugin.CurryPlugin.Encapsulation
-    Plugin.CurryPlugin.Prelude
-    Plugin.CurryPlugin.Monad
+    Plugin.ParsePlugin
+    Plugin.ParsePlugin.BuiltIn
+    Plugin.ParsePlugin.ForeignExport
+    Plugin.ParsePlugin.Prelude
+    Plugin.ParsePlugin.Monad
     Plugin.Effect.Classes
     Plugin.Effect.Annotation
     Plugin.Effect.Transformers
-    Plugin.CurryPlugin.THEval
-    Plugin.CurryPlugin.Tree
   build-depends:
     curry-ghc-language-plugin,
     process   -any,

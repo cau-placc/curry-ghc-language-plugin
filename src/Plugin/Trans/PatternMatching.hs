@@ -18,7 +18,7 @@ before lifting a function.
 module Plugin.Trans.PatternMatching (compileMatchGroup, matchExpr) where
 
 import Data.List
-import Data.Syb
+import Data.Generics hiding (TyCon, funResultTy, Prefix)
 import Data.Maybe
 import Data.Tuple.Extra
 import Control.Monad

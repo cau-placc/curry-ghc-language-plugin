@@ -13,7 +13,7 @@ the functional-logic programming language Curry.
 module Plugin.LanguagePlugin (languagePlugin) where
 
 import Data.List
-import Data.Syb
+import Data.Generics hiding (TyCon, tyConName)
 import Data.IORef
 import Data.Maybe
 import Control.Exception
@@ -197,7 +197,7 @@ liftMonadPlugin mdopts env = setGblEnv env $ do
 
   -- generate module annotation
   let a = Annotation (ModuleTarget (tcg_semantic_mod env))
-            (toSerialized serializeWithData Nondeterministic)
+            (toSerialized serializeWithData ParseEffect)
   -- update environment and temporarily remove tc plugins
   let aenv = tcg_ann_env env
   let annotations = tcg_anns env

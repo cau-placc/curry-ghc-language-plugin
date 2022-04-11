@@ -11,7 +11,7 @@ that is introduced for each record label.
 module Plugin.Trans.Record (liftRecordSel) where
 
 import Data.Tuple
-import Data.Syb
+import Data.Generics
 import Language.Haskell.Syntax.Extension
 import GHC.Parser.Annotation
 

@@ -9,7 +9,7 @@ stuff to deal with variables.
 -}
 module Plugin.Trans.Var where
 
-import Data.Syb
+import Data.Generics hiding (mkFunTy)
 
 import GHC.Types.Name.Occurrence
 import GHC.Plugins

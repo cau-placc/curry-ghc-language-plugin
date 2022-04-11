@@ -1,12 +1,15 @@
-{-# LANGUAGE TemplateHaskell #-}
 module Main where
 
-import Example2
-import Plugin.CurryPlugin.Encapsulation
+import Example
+import Plugin.ParsePlugin.Monad
+import Prelude hiding (Maybe(..)) 
+import qualified Prelude as P
+import Plugin.ParsePlugin.Prelude
 
 main :: IO ()
-main = putStrLn $ "There are " ++ show (length res) ++
-                  " permutations of a list of length " ++ show n
-  where
-    n = 3
-    res = $(evalGeneric DFS 'permutations) [(1::Int)..n]
+main = return ()
+
+test :: String -> P.Maybe Integer
+test s = case parse parseAnBn s of 
+  [("", Just i)] -> P.Just i
+  _              -> P.Nothing

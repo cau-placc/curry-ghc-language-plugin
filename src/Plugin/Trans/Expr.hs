@@ -14,7 +14,7 @@ functions and expressions to integrate our effect.
 module Plugin.Trans.Expr (liftMonadicBinding, liftMonadicExpr) where
 
 import Control.Monad
-import Data.Syb
+import Data.Generics
 import Data.List
 import Data.Tuple.Extra
 import Data.Maybe

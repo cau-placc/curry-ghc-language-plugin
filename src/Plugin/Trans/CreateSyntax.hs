@@ -35,7 +35,6 @@ import Plugin.Trans.Constr
 import Plugin.Trans.Type
 import Plugin.Trans.Util
 import Plugin.Trans.Var
-import Plugin.Trans.ConstraintSolver
 import Plugin.Trans.Config
 import Plugin.Effect.Classes
 
@@ -263,23 +262,7 @@ mkNewFmapTh etype btype = do
 
 -- | Create a 'share' for the given argument types.
 mkNewShareTh :: TyConMap -> Type -> TcM (LHsExpr GhcTc)
-mkNewShareTh tcs ty
-  | isForAllTy ty = do
-    sp <- getSrcSpanM
-    mtc <- getMonadTycon
-    ftc <- getFunTycon
-    stc <- getShareClassTycon
-    let docImportant = "Cannot share polymorphic values."
-    (ty', _) <- liftIO $ removeNondetShareable tcs mtc ftc stc ty
-    let docSuppl = "For a variable with type" <+> ppr ty'
-    e <- mkLongErrAt sp docImportant docSuppl
-    reportError e
-    let expType = mkVisFunTyMany ty $ -- a ->
-                  mkTyConApp mtc [ty] -- m a
-    u <- getUniqueM
-    let nm = mkSystemName u $ mkVarOcc "share_hole"
-    return (noLocA $ HsVar noExtField $ noLocA $ mkVanillaGlobal nm expType)
-  | otherwise     = do
+mkNewShareTh _ ty = do
   mtycon <- getMonadTycon
   ps_expr <- queryBuiltinFunctionName "shre"
   let expType = mkVisFunTyMany ty $    -- a ->

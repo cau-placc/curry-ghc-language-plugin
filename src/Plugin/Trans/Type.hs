@@ -15,7 +15,7 @@ module Plugin.Trans.Type where
 import Data.IORef
 import Data.List
 import Data.Maybe
-import Data.Syb
+import Data.Generics hiding (TyCon, tyConName, Refl)
 import Control.Monad
 import Language.Haskell.TH.Syntax ( OccName(..), ModName(..), PkgName(..)
                                   , Name(..), NameFlavour(..) )
