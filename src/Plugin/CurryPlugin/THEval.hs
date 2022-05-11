@@ -99,7 +99,7 @@ genEval sma fname args = do
 
 -- | Name of the monad 'Nondet' used in the lifting.
 ndName :: Name
-ndName = ''Nondet
+ndName = ''Curry
 
 -- | Name of the function type '-->' used in the lifting.
 funcName :: Name

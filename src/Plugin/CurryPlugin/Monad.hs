@@ -12,6 +12,9 @@
 {-# LANGUAGE DerivingVia                #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE InstanceSigs               #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# OPTIONS_GHC -Wno-orphans            #-}
 {-|
 Module      : Plugin.CurryPlugin.Monad
 Description : Convenience wrapper for the effect
@@ -24,46 +27,115 @@ The monad type is a wrapper over the
 'Lazy' type from 'Plugin.Effect.CurryEffect'.
 -}
 module Plugin.CurryPlugin.Monad
-  ( Nondet(..), type (-->)(..), (?), failed, share
+  ( Curry(..), type (-->)(..), (?), failed, share
   , SearchMode(..)
   , Normalform(..), modeOp, allValues, allValuesNF
   , NondetTag(..)
-  , liftNondet1, liftNondet2
+  , liftCurry1, liftCurry2
   , app, apply2, apply2Unlifted, apply3
   , bind, rtrn, rtrnFunc, fmp, shre, shreTopLevel, seqValue
   , rtrnFuncUnsafePoly, appUnsafePoly )
   where
 
-import Language.Haskell.TH.Syntax
+import Language.Haskell.TH.Syntax hiding (lift)
 import Control.Applicative
 import Control.Monad
+import Control.Monad.State
+import Data.IntMap (IntMap)
+import qualified Data.IntMap as IntMap
+import Data.Set (Set)
+import qualified Data.Set as Set
+import Data.IORef
+import Data.Function
+import System.IO.Unsafe
 import Unsafe.Coerce
+import GHC.Types.Unique
+import GHC.Types.Unique.Supply
+import GHC.Exts
 
 import Plugin.Effect.Classes
 import Plugin.CurryPlugin.Tree
 import Plugin.Effect.Annotation
-import Plugin.Effect.Transformers
 
--- | The actual monad for nondeterminism used by the plugin.
-newtype Nondet a = Nondet { unNondet :: LazyT Nondet Tree a }
-  deriving (Functor, Applicative, Monad, Alternative, MonadPlus, Sharing)
-    via LazyT Nondet Tree
-  deriving anyclass (SharingTop)
+type Heap a = IntMap a
+type ID = UniqSupply
+
+splitID :: ID -> (ID, ID)
+splitID = splitUniqSupply
+
+instance Eq UniqSupply where
+  (==) = (==) `on` (getKey . uniqFromSupply)
+
+instance Ord UniqSupply where
+  compare = compare `on` (getKey . uniqFromSupply)
+
+emptyHeap :: Heap a
+emptyHeap = IntMap.empty
+
+insertHeap :: ID -> a -> Heap a -> Heap a
+insertHeap i = IntMap.insert (getKey (uniqFromSupply i))
+
+lookupHeap :: ID -> Heap a -> Maybe a
+lookupHeap i = IntMap.lookup (getKey (uniqFromSupply i))
+
+data MemoState = MemoState ID (Set ID)
+
+newtype Curry a = Curry {
+    unCurry :: StateT MemoState Tree a
+  } deriving newtype (Functor, Applicative, Monad, MonadState MemoState, MonadPlus)
+    deriving anyclass SharingTop
+
+
+instance Alternative Curry where
+  empty = Curry (lift Failed)
+  Curry ma1 <|> Curry ma2 = Curry (do
+    MemoState b1 p1 <- get
+    let (i1, i2) = splitID b1
+    let parents = Set.insert b1 p1
+    (put (MemoState i1 parents) >> ma1)
+      <|> (put (MemoState i2 parents) >> ma2))
+
+lookupTaskMap :: Heap a -> ID -> Set ID -> Maybe a
+lookupTaskMap h i p = msum (map (`lookupHeap` h) (i : Set.toList p))
+
+instance Sharing Curry where
+  type ShareConstraints Curry a = Shareable Curry a
+  share :: forall a. Shareable Curry a => Curry a -> Curry (Curry a)
+  share ma = memo (ma >>= shareArgs)
+    where
+      memo :: Curry a -> Curry (Curry a)
+      memo (Curry ms) = Curry $ do
+        MemoState b1 _ <- get
+        -- not allowed to float out!
+        let mapRef = unsafePerformIO (newIORef (noinline const (emptyHeap @a) b1))
+        return $ Curry $ do
+          MemoState b2 p2 <- get
+          let m = unsafePerformIO (readIORef (noinline const mapRef b1))
+          case lookupTaskMap m b2 p2 of
+            Just res ->
+              let i = snd (splitID b2)
+              in put (MemoState i (Set.insert b2 p2)) >> return res
+            Nothing  -> do
+              a <- ms
+              MemoState b3 _ <- get
+              let whereToInsert = if b2 == b3 then b1 else b3
+              let inserted = insertHeap whereToInsert a m
+              unsafePerformIO (writeIORef mapRef inserted) `seq` return a
 
 {-# INLINE[0] bind #-}
-bind :: Nondet a -> (a -> Nondet b) -> Nondet b
+bind :: Curry a -> (a -> Curry b) -> Curry b
 bind = (>>=)
 
 {-# INLINE[0] rtrn #-}
-rtrn :: a -> Nondet a
+rtrn :: a -> Curry a
 rtrn = pure
 
 {-# INLINE[0] rtrnFunc #-}
-rtrnFunc :: (Nondet a -> Nondet b) -> Nondet (a --> b)
+rtrnFunc :: (Curry a -> Curry b) -> Curry (a --> b)
 rtrnFunc = pure . Func
 
 {-# INLINE[0] app #-}
-app :: Nondet (a --> b) -> Nondet a -> Nondet b
+app :: Curry (a --> b) -> Curry a -> Curry b
 app mf ma = mf >>= \(Func f) -> f ma
 
 -- HACK:
@@ -81,27 +153,27 @@ app mf ma = mf >>= \(Func f) -> f ma
 -- To remedy this, we provide the following two functions using unsafeCoerce to
 -- accomodate such a RankN type.
 {-# INLINE[0] rtrnFuncUnsafePoly #-}
-rtrnFuncUnsafePoly :: forall a b a'. (a' -> Nondet b) -> Nondet (a --> b)
-rtrnFuncUnsafePoly f = pure (Func (unsafeCoerce f :: Nondet a -> Nondet b))
+rtrnFuncUnsafePoly :: forall a b a'. (a' -> Curry b) -> Curry (a --> b)
+rtrnFuncUnsafePoly f = pure (Func (unsafeCoerce f :: Curry a -> Curry b))
 
 {-# INLINE[0] appUnsafePoly #-}
-appUnsafePoly :: forall a b a'. Nondet (a --> b) -> a' -> Nondet b
-appUnsafePoly mf ma = mf >>= \(Func f) -> (unsafeCoerce f :: a' -> Nondet b) ma
+appUnsafePoly :: forall a b a'. Curry (a --> b) -> a' -> Curry b
+appUnsafePoly mf ma = mf >>= \(Func f) -> (unsafeCoerce f :: a' -> Curry b) ma
 
 {-# INLINE[0] fmp #-}
-fmp :: (a -> b) -> Nondet a -> Nondet b
+fmp :: (a -> b) -> Curry a -> Curry b
 fmp = fmap
 
 {-# INLINE[0] shre #-}
-shre :: Shareable Nondet a => Nondet a -> Nondet (Nondet a)
+shre :: Shareable Curry a => Curry a -> Curry (Curry a)
 shre = share
 
 {-# INLINE[0] shreTopLevel #-}
-shreTopLevel :: (Int, String) -> Nondet a -> Nondet a
+shreTopLevel :: (Int, String) -> Curry a -> Curry a
 shreTopLevel = shareTopLevel
 
 {-# INLINE seqValue #-}
-seqValue :: Nondet a -> Nondet b -> Nondet b
+seqValue :: Curry a -> Curry b -> Curry b
 seqValue a b = a >>= \a' -> a' `seq` b
 
 {-# RULES
@@ -110,14 +182,14 @@ seqValue a b = a >>= \a' -> a' `seq` b
   #-}
   -- "bind/rtrn'let"   forall e x. let b = e in rtrn x = rtrn (let b = e in x)
 
--- | Nondeterministic failure
-failed :: Shareable Nondet a => Nondet a
+-- | Curryerministic failure
+failed :: Shareable Curry a => Curry a
 failed = mzero
 
 infixr 0 ?
 {-# INLINE (?) #-}
--- | Nondeterministic choice
-(?) :: Shareable Nondet a => Nondet (a --> a --> a)
+-- | Curryerministic choice
+(?) :: Shareable Curry a => Curry (a --> a --> a)
 (?) = rtrnFunc $ \t1 -> rtrnFunc $ \t2 -> t1 `mplus` t2
 
 -- | Enumeration of available search modes.
@@ -130,24 +202,24 @@ modeOp :: SearchMode -> Tree a -> [a]
 modeOp DFS = dfs
 modeOp BFS = bfs
 
--- | Collect the results of a nondeterministic computation
+-- | Collect the results of a Curryerministic computation
 -- as their normal form in a tree.
-allValuesNF :: Normalform Nondet a b
-            => Nondet a -> Tree b
+allValuesNF :: Normalform Curry a b
+            => Curry a -> Tree b
 allValuesNF = allValues . nf
 
--- | Collect the results of a nondeterministic computation in a tree.
-allValues :: Nondet a -> Tree a
-allValues = runLazyT . unNondet
+-- | Collect the results of a Curryerministic computation in a tree.
+allValues :: Curry a -> Tree a
+allValues c = evalStateT (unCurry c) (MemoState (unsafePerformIO (mkSplitUniqSupply 'a')) Set.empty)
 
 infixr 0 -->
-newtype a --> b = Func (Nondet a -> Nondet b)
+newtype a --> b = Func (Curry a -> Curry b)
 
 instance (Sharing m) => Shareable m (a --> b) where
   shareArgs (Func f) = fmap Func (shareArgs f)
 
-instance (Normalform Nondet a1 a2, Normalform Nondet b1 b2)
-  => Normalform Nondet (a1 --> b1) (a2 -> b2) where
+instance (Normalform Curry a1 a2, Normalform Curry b1 b2)
+  => Normalform Curry (a1 --> b1) (a2 -> b2) where
     nf    mf =
       mf >> return (error "Plugin Error: Cannot capture function types")
     liftE mf = do
@@ -155,25 +227,25 @@ instance (Normalform Nondet a1 a2, Normalform Nondet b1 b2)
       return (Func (liftE . fmap f . nf))
 
 -- | Lift a unary function with the lifting scheme of the plugin.
-liftNondet1 :: (a -> b) -> Nondet (a --> b)
-liftNondet1 f = rtrnFunc (\a -> a >>= \a' -> return (f a'))
+liftCurry1 :: (a -> b) -> Curry (a --> b)
+liftCurry1 f = rtrnFunc (\a -> a >>= \a' -> return (f a'))
 
 -- | Lift a 2-ary function with the lifting scheme of the plugin.
-liftNondet2 :: (a -> b -> c) -> Nondet (a --> b --> c)
-liftNondet2 f = rtrnFunc (\a  -> rtrnFunc (\b  ->
+liftCurry2 :: (a -> b -> c) -> Curry (a --> b --> c)
+liftCurry2 f = rtrnFunc (\a  -> rtrnFunc (\b  ->
                 a >>=  \a' -> b >>=     \b' -> return (f a' b')))
 
 -- | Apply a lifted 2-ary function to its lifted arguments.
-apply2 :: Nondet (a --> b --> c) -> Nondet a -> Nondet b -> Nondet c
+apply2 :: Curry (a --> b --> c) -> Curry a -> Curry b -> Curry c
 apply2 f a b = app f a >>= \(Func f') -> f' b
 
 -- | Apply a lifted 2-ary function to its arguments, where just the
 -- first argument has to be lifted.
-apply2Unlifted :: Nondet (a --> b --> c)
-               -> Nondet a -> b -> Nondet c
+apply2Unlifted :: Curry (a --> b --> c)
+               -> Curry a -> b -> Curry c
 apply2Unlifted f a b = app f a >>= \(Func f') -> f' (return b)
 
 -- | Apply a lifted 3-ary function to its lifted arguments.
-apply3 :: Nondet (a --> b --> c --> d)
-       -> Nondet a -> Nondet b -> Nondet c -> Nondet d
+apply3 :: Curry (a --> b --> c --> d)
+       -> Curry a -> Curry b -> Curry c -> Curry d
 apply3 f a b c = apply2 f a b >>= \(Func f') -> f' c

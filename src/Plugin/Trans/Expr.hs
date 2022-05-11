@@ -537,7 +537,6 @@ liftMonadicExpr given tcs (L l (HsLet x bs e)) = do
   return (L l (HsLet x bs' e''))
 liftMonadicExpr given tcs (L l1 (HsDo x ctxt (L l2 stmts))) = do
   x' <- liftTypeTcM tcs x
-  printAny "x'" x'
   -- Because ListComp are not overloadable,
   -- we have to change them to MonadComp.
   let ctxtSwitch | ListComp <- ctxt = True
