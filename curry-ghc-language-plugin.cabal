@@ -38,6 +38,7 @@ common deps
     bytestring       -any,
     containers       -any,
     transformers     -any,
+    kan-extensions   -any,
     mtl              -any,
     extra            -any,
     split            -any,

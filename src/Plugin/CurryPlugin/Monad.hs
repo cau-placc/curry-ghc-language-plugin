@@ -14,6 +14,7 @@
 {-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE InstanceSigs               #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE LambdaCase                 #-}
 {-# OPTIONS_GHC -Wno-orphans            #-}
 {-|
 Module      : Plugin.CurryPlugin.Monad
@@ -41,6 +42,7 @@ import Language.Haskell.TH.Syntax hiding (lift)
 import Control.Applicative
 import Control.Monad
 import Control.Monad.State
+import Control.Monad.Codensity
 import Data.IntMap (IntMap)
 import qualified Data.IntMap as IntMap
 import Data.Set (Set)
@@ -69,58 +71,80 @@ instance Eq UniqSupply where
 instance Ord UniqSupply where
   compare = compare `on` (getKey . uniqFromSupply)
 
-emptyHeap :: Heap a
+emptyHeap :: Heap (Bool, a)
 emptyHeap = IntMap.empty
 
-insertHeap :: ID -> a -> Heap a -> Heap a
+insertHeap :: ID -> (Bool, a) -> Heap (Bool, a) -> Heap (Bool, a)
 insertHeap i = IntMap.insert (getKey (uniqFromSupply i))
 
-lookupHeap :: ID -> Heap a -> Maybe a
+lookupHeap :: ID -> Heap (Bool, a) -> Maybe (Bool, a)
 lookupHeap i = IntMap.lookup (getKey (uniqFromSupply i))
 
 data MemoState = MemoState ID (Set ID)
 
-newtype Curry a = Curry {
-    unCurry :: StateT MemoState Tree a
-  } deriving newtype (Functor, Applicative, Monad, MonadState MemoState, MonadPlus)
-    deriving anyclass SharingTop
+data STag = Unshared | Shared
+  deriving Eq
 
+data SVal a = SVal {
+    valTag :: STag,
+    valVal :: a
+  } deriving Functor
+
+newtype Curry a = Curry {
+    unCurry :: StateT MemoState (Codensity Tree) (SVal a)
+  } deriving anyclass (SharingTop, MonadPlus)
+
+instance Functor Curry where
+  fmap f (Curry m) = Curry $ fmap (fmap f) m
+
+instance Applicative Curry where
+  pure x = Curry $ return $ SVal Unshared x
+  Curry mf <*> Curry ma = Curry ((\f a -> SVal Unshared ((valVal f) (valVal a))) <$> mf <*> ma)
+
+instance Monad Curry where
+  Curry ma >>= f = Curry $ do
+    SVal _ a <- ma
+    unCurry (f a)
 
 instance Alternative Curry where
-  empty = Curry (lift Failed)
-  Curry ma1 <|> Curry ma2 = Curry (do
+  empty = Curry (lift (lift Failed))
+  Curry ma1 <|> Curry ma2 = Curry $ do
     MemoState b1 p1 <- get
     let (i1, i2) = splitID b1
     let parents = Set.insert b1 p1
     (put (MemoState i1 parents) >> ma1)
-      <|> (put (MemoState i2 parents) >> ma2))
+      <|> (put (MemoState i2 parents) >> ma2)
 
-lookupTaskMap :: Heap a -> ID -> Set ID -> Maybe a
+lookupTaskMap :: Heap (Bool, a) -> ID -> Set ID -> Maybe (Bool, a)
 lookupTaskMap h i p = msum (map (`lookupHeap` h) (i : Set.toList p))
 
 instance Sharing Curry where
   type ShareConstraints Curry a = Shareable Curry a
   share :: forall a. Shareable Curry a => Curry a -> Curry (Curry a)
-  share ma = memo (ma >>= shareArgs)
+  share (Curry ma) = memo $ Curry $ ma >>= \case
+         SVal Shared   v -> return (SVal Shared v)
+         SVal Unshared v -> unCurry (shareArgs v)
     where
       memo :: Curry a -> Curry (Curry a)
       memo (Curry ms) = Curry $ do
         MemoState b1 _ <- get
         -- not allowed to float out!
         let mapRef = unsafePerformIO (newIORef (noinline const (emptyHeap @a) b1))
-        return $ Curry $ do
+        return $ SVal Shared $ Curry $ do
           MemoState b2 p2 <- get
-          let m = unsafePerformIO (readIORef (noinline const mapRef b1))
+          let m = unsafePerformIO (readIORef (noinline const mapRef b2))
           case lookupTaskMap m b2 p2 of
-            Just res ->
-              let i = snd (splitID b2)
-              in put (MemoState i (Set.insert b2 p2)) >> return res
+            Just (nd, res)
+              | nd -> let i = snd (splitID b2)
+                      in put (MemoState i (Set.insert b2 p2))
+                         >> return (SVal Shared res)
+              | otherwise -> return (SVal Shared res)
             Nothing  -> do
-              a <- ms
+              SVal _ a <- ms
               MemoState b3 _ <- get
               let whereToInsert = if b2 == b3 then b1 else b3
-              let inserted = insertHeap whereToInsert a m
-              unsafePerformIO (writeIORef mapRef inserted) `seq` return a
+              let inserted = insertHeap whereToInsert (b2 /= b3, a) m
+              unsafePerformIO (writeIORef mapRef inserted) `seq` return (SVal Shared a)
 
 {-# INLINE[0] bind #-}
 bind :: Curry a -> (a -> Curry b) -> Curry b
@@ -178,6 +202,7 @@ seqValue a b = a >>= \a' -> a' `seq` b
 
 {-# RULES
 "bind/rtrn"    forall f x. bind (rtrn x) f = f x
+"app/rtrnFunc" forall f x. app (rtrnFunc f) x = f x
 "shreTopLevel" forall x i. shreTopLevel i x = x
   #-}
   -- "bind/rtrn'let"   forall e x. let b = e in rtrn x = rtrn (let b = e in x)
@@ -210,7 +235,7 @@ allValuesNF = allValues . nf
 
 -- | Collect the results of a Curryerministic computation in a tree.
 allValues :: Curry a -> Tree a
-allValues c = evalStateT (unCurry c) (MemoState (unsafePerformIO (mkSplitUniqSupply 'a')) Set.empty)
+allValues c = valVal <$> runCodensity (evalStateT (unCurry c) $ MemoState (unsafePerformIO (mkSplitUniqSupply 'a')) Set.empty) return
 
 infixr 0 -->
 newtype a --> b = Func (Curry a -> Curry b)

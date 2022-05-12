@@ -48,6 +48,7 @@ main = do
   putStrLn res
 
 deriving instance Show (TakPeano.Nat)
+deriving instance Show (NRev.Nat)
 deriving instance Show (ReverseHO.MyBool)
 deriving instance Show a => Show (PermSortPeano.List a)
 deriving instance Show (PermSortPeano.Nat)

@@ -1038,7 +1038,7 @@ shareVars tcs vs evs e' ety = do
     -- share v1 >>= \v2 -> e
     -- differs from the normal lifting, because we optimize for call-by-need
     shareVar ty e (v1,v2)
-      | countVarOcc v2 e <= 1 = return (substitute v1 v2 e)
+      | maxUsage v2 e <= 1 = return (substitute v1 v2 e)
       | Many <- varMult v2     = do
         let v1e = noLocA (HsVar noExtField (noLocA v1))
         let v1ty = varType v1
@@ -1054,6 +1054,49 @@ shareVars tcs vs evs e' ety = do
       -- is polymorphic we know this, as the function could not have
       -- such a multiplicity if the function could not be linear in v1/v2.
       | otherwise = return (substitute v1 v2 e)
+
+maxUsage :: Var -> LHsExpr GhcTc -> Int
+maxUsage v le = goL le
+ where
+  goL :: LHsExpr GhcTc -> Int
+  goL (L _ e) = go e
+  go :: HsExpr GhcTc -> Int
+  go e' = case e' of
+    HsVar _ (L _ v') -> if v == v' then 1 else 0
+    XExpr (WrapExpr (HsWrap _ e)) -> go e
+    HsLam _ mg -> goMG mg
+    HsLamCase _ mg -> goMG mg
+    OpApp _ e1 op e2 -> goL e1 + goL op + goL e2
+    HsApp _ fn ex -> goL fn + goL ex
+    HsAppType _ e _ -> goL e
+    NegApp _ e (SyntaxExprTc n _ _) -> goL e + go n
+    HsPar _ e -> goL e
+    ExplicitTuple _ args _ -> sum (map goTup args)
+    ExplicitSum _ _ _ e -> goL e
+    HsCase _ scr br -> goL scr + goMG br
+    HsIf _ e1 e2 e3 -> goL e1 + max (goL e2) (goL e3)
+    HsLet _ bs e -> goBs bs + goL e
+    HsDo _ _ (L _ stmts) -> sum (map goStmt stmts)
+    ExplicitList _ es -> sum (map goL es)
+    RecordUpd _ e fs -> goL e + goF fs
+    ExprWithTySig _ e _ -> goL e
+    ArithSeq _ (Just (SyntaxExprTc e _ _)) i -> go e + sum (map goL (arithSeqArgs i))
+    ArithSeq _ _ i -> sum (map goL (arithSeqArgs i))
+    HsPragE _ _ e -> goL e
+    HsTick _ _ e -> goL e
+    HsBinTick _ _ _ e -> goL e
+    _                 -> 0
+
+  goMG (MG _ (L _ ms) _) = maximum (map goM ms)
+  goM :: LMatch GhcTc (LHsExpr GhcTc) -> Int
+  goM (L _ (Match _ _ _ (GRHSs _ [L _ (GRHS _ _ e )] _))) = goL e
+  goM _                                              = 0
+  goTup (Present _ e) = goL e
+  goTup _             = 0
+  goBs _ = 2 -- TODO
+  goStmt _ = 2 -- TODO
+  goF _ = 2 -- TODO
+
 
 shareTopLevel :: Maybe Var -> LHsExpr GhcTc -> TcM (LHsExpr GhcTc)
 shareTopLevel Nothing  e = return e
