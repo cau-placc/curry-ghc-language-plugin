@@ -156,7 +156,7 @@ rtrn = pure
 
 {-# INLINE[0] rtrnFunc #-}
 rtrnFunc :: (Curry a -> Curry b) -> Curry (a --> b)
-rtrnFunc = pure . Func
+rtrnFunc = Curry . pure . SVal Shared . Func
 
 {-# INLINE[0] app #-}
 app :: Curry (a --> b) -> Curry a -> Curry b
@@ -253,12 +253,12 @@ instance (Normalform Curry a1 a2, Normalform Curry b1 b2)
 
 -- | Lift a unary function with the lifting scheme of the plugin.
 liftCurry1 :: (a -> b) -> Curry (a --> b)
-liftCurry1 f = rtrnFunc (\a -> a >>= \a' -> return (f a'))
+liftCurry1 f = rtrnFunc (\a -> a >>= \a' -> Curry $ return $ SVal Shared (f a'))
 
 -- | Lift a 2-ary function with the lifting scheme of the plugin.
 liftCurry2 :: (a -> b -> c) -> Curry (a --> b --> c)
 liftCurry2 f = rtrnFunc (\a  -> rtrnFunc (\b  ->
-                a >>=  \a' -> b >>=     \b' -> return (f a' b')))
+                a >>=  \a' -> b >>=     \b' -> Curry $ return $ SVal Shared (f a' b')))
 
 -- | Apply a lifted 2-ary function to its lifted arguments.
 apply2 :: Curry (a --> b --> c) -> Curry a -> Curry b -> Curry c
