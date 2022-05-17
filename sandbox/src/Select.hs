@@ -1,6 +1,8 @@
 {-# OPTIONS_GHC -fplugin Plugin.CurryPlugin #-}
 module Select where
 
+import qualified SelectD
+
 -- Returns some element of a list (same as `Prelude.anyOf`).
 someOf :: [a] -> a
 someOf (x:xs) = x ? someOf xs
@@ -34,8 +36,14 @@ select_75 = select [1..75]
 select_100 :: Int
 select_100 = select [1..100]
 
+select_100D :: Int
+select_100D = select SelectD.fromToOneOneHundredP
+
 select_150 :: Int
 select_150 = select [1..150]
 
 main :: Int
 main = select_100
+
+mainD :: Int
+mainD = select_100D

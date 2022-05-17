@@ -24,3 +24,6 @@ sortDescList n = psort (2:[n,n-1 .. 3]++[1])
 --main = psort [2,13,12,11,10,9,8,7,6,5,4,3,1]
 main :: [Int]
 main = sortDescList 13
+
+mainD :: [Int]
+mainD = main

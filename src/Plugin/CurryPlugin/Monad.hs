@@ -34,7 +34,7 @@ module Plugin.CurryPlugin.Monad
   , NondetTag(..)
   , liftCurry1, liftCurry2
   , app, apply2, apply2Unlifted, apply3
-  , bind, rtrn, rtrnFunc, fmp, shre, shreTopLevel, seqValue
+  , bind, rtrn, rtrnS, rtrnFunc, fmp, shre, shreTopLevel, seqValue
   , rtrnFuncUnsafePoly, appUnsafePoly )
   where
 
@@ -54,6 +54,7 @@ import Unsafe.Coerce
 import GHC.Types.Unique
 import GHC.Types.Unique.Supply
 import GHC.Exts
+import GHC.Generics as Gen
 
 import Plugin.Effect.Classes
 import Plugin.CurryPlugin.Tree
@@ -115,6 +116,46 @@ instance Alternative Curry where
     (put (MemoState i1 parents) >> ma1)
       <|> (put (MemoState i2 parents) >> ma2)
 
+instance {-# INCOHERENT #-} NormalformGen Curry Gen.V1 Gen.V1 where
+  nfGen _ = undefined
+  liftEGen _ = undefined
+
+instance {-# INCOHERENT #-} NormalformGen Curry Gen.U1 Gen.U1 where
+  nfGen mx = mx >>= \case
+    Gen.U1 -> rtrnS Gen.U1
+  liftEGen mx = mx >>= \case
+    Gen.U1 -> rtrnS Gen.U1
+
+instance {-# INCOHERENT #-} (NormalformGen Curry f1 g1, NormalformGen Curry f2 g2) =>
+  NormalformGen Curry (f1 Gen.:+: f2) (g1 Gen.:+: g2) where
+    nfGen mx = mx >>= \case
+      Gen.L1 x -> Gen.L1 <$> nfGen (rtrnS x)
+      Gen.R1 x -> Gen.R1 <$> nfGen (rtrnS x)
+    liftEGen mx = mx >>= \case
+      Gen.L1 x -> Gen.L1 <$> liftEGen (rtrnS x)
+      Gen.R1 x -> Gen.R1 <$> liftEGen (rtrnS x)
+
+instance {-# INCOHERENT #-} (NormalformGen Curry f1 g1, NormalformGen Curry f2 g2) =>
+  NormalformGen Curry (f1 Gen.:*: f2) (g1 Gen.:*: g2) where
+    nfGen mx = mx >>= \case
+      x Gen.:*: y -> (Gen.:*:) <$> nfGen (rtrnS x) <*> nfGen (rtrnS y)
+    liftEGen mx = mx >>= \case
+      x Gen.:*: y -> (Gen.:*:) <$> liftEGen (rtrnS x) <*> liftEGen (rtrnS y)
+
+instance {-# INCOHERENT #-} (Normalform Curry a b) =>
+  NormalformGen Curry (Gen.K1 i (Curry a)) (Gen.K1 j b) where
+    nfGen mx = mx >>= \case
+      Gen.K1 x -> Gen.K1 <$> nf x
+    liftEGen mx = mx >>= \case
+      Gen.K1 x -> Gen.K1 <$> rtrnS (liftE (rtrnS x))
+
+instance {-# INCOHERENT #-} (NormalformGen Curry f g) =>
+  NormalformGen Curry (Gen.M1 i t f) (Gen.M1 j h g) where
+    nfGen mx = mx >>= \case
+      Gen.M1 x -> Gen.M1 <$> nfGen (return x)
+    liftEGen mx = mx >>= \case
+      Gen.M1 x -> Gen.M1 <$> liftEGen (rtrnS x)
+
 lookupTaskMap :: Heap (Bool, a) -> ID -> Set ID -> Maybe (Bool, a)
 lookupTaskMap h i p = msum (map (`lookupHeap` h) (i : Set.toList p))
 
@@ -154,9 +195,13 @@ bind = (>>=)
 rtrn :: a -> Curry a
 rtrn = pure
 
+{-# INLINE[0] rtrnS #-}
+rtrnS :: a -> Curry a
+rtrnS = Curry . pure . SVal Shared
+
 {-# INLINE[0] rtrnFunc #-}
 rtrnFunc :: (Curry a -> Curry b) -> Curry (a --> b)
-rtrnFunc = Curry . pure . SVal Shared . Func
+rtrnFunc = rtrnS . Func
 
 {-# INLINE[0] app #-}
 app :: Curry (a --> b) -> Curry a -> Curry b
@@ -202,6 +247,7 @@ seqValue a b = a >>= \a' -> a' `seq` b
 
 {-# RULES
 "bind/rtrn"    forall f x. bind (rtrn x) f = f x
+"bind/rtrnS"   forall f x. bind (rtrnS x) f = f x
 "app/rtrnFunc" forall f x. app (rtrnFunc f) x = f x
 "shreTopLevel" forall x i. shreTopLevel i x = x
   #-}

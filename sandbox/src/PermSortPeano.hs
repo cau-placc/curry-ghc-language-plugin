@@ -2,6 +2,9 @@
 module PermSortPeano where
 -- Permutation sort with Peano numbers and user-defined lists
 
+import Nat
+import qualified PermSortPeanoD
+
 data MyBool = MyTrue | MyFalse
 
 ifThenElse :: MyBool -> a -> a -> a
@@ -11,9 +14,6 @@ ifThenElse MyFalse _ y = y
 guard :: MyBool -> a -> a
 guard MyTrue x = x
 guard _      _ = failed
-
-
-data Nat = O | S Nat
 
 dec :: Nat -> Nat
 dec (S x) = x
@@ -95,6 +95,9 @@ sortDescList n = psort (Cons two (app (descList n three) (Cons (S O) Nil)))
 psort_13 :: List Nat
 psort_13 = sortDescList nat13
 
+psort_13D :: List Nat
+psort_13D = sortDescList PermSortPeanoD.nat13P
+
 psort_14 :: List Nat
 psort_14 = sortDescList nat14
 
@@ -106,3 +109,6 @@ psort_13_length = let x = len psort_13 in add (add x x) x
 
 main :: List Nat
 main = psort_13
+
+mainD :: List Nat
+mainD = psort_13D

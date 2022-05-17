@@ -1,8 +1,10 @@
-{-# OPTIONS_GHC -fplugin Plugin.CurryPlugin #-}
-module SortPrimes where
+module SortPrimesD where
 -- Benchmark to measure sharing across non-determinism
 
-import qualified SortPrimesD
+import Plugin.CurryPlugin.Monad
+import Plugin.CurryPlugin.BuiltIn (ListND)
+
+{-# ANN module Nondeterministic #-}
 
 suCC :: Int -> Int
 suCC x = x + 1
@@ -12,7 +14,7 @@ isdivs n x = mod x n /= 0
 
 the_filter :: [Int] -> [Int]
 the_filter (n:ns) = myfilter (isdivs n) ns
-the_filter _      = failed
+the_filter _      = error ""
 
 primes :: [Int]
 primes = mymap myhead (myiterate the_filter (myiterate suCC 2))
@@ -32,38 +34,16 @@ mymap f (x:xs) = f x : mymap f xs
 
 myhead :: [Int] -> Int
 myhead (x : _) = x
-myhead _       = failed
+myhead _       = error ""
 
 at :: [Int] -> Int -> Int
 at (x:xs) n = if n==0  then x
                        else at xs (n - 1)
-at _      _ = failed
-
----------------
--- Permutation sort:
-
-ndinsert :: a -> [a] -> [a]
-ndinsert x xs     = (x : xs) ? ndinsert2 x xs
-
-ndinsert2 :: a -> [a] -> [a]
-ndinsert2 x (y:ys) = y : ndinsert x ys
-ndinsert2 _ _      = failed
-
-perm :: [a] -> [a]
-perm []     = []
-perm (x:xs) = ndinsert x (perm xs)
-
-sorted :: [Int] -> [Int]
-sorted []       = []
-sorted [x]      = [x]
-sorted (x:y:ys) = guard (x <= y) (x:sorted (y:ys))
-
-psort :: [Int] -> [Int]
-psort xs = sorted (perm xs)
+at _      _ = error ""
 
 guard :: Bool -> a -> a
 guard True x = x
-guard _    _ = failed
+guard _    _ = error ""
 
 myand :: Bool -> Bool -> Bool
 myand True y  = y
@@ -78,32 +58,12 @@ isort (x:xs) = insert (isort xs)
   insert []        = [x]
   insert zs@(y:ys) | x <= y    = x : zs
                    | otherwise = y : insert ys
-  insert _         = failed
+  insert _         = error ""
 
 ---------------
 
 primeList :: [Int]
 primeList = [primes!!303, primes!!302, primes!!301, primes!!300]
 
-primeListD :: [Int]
-primeListD = SortPrimesD.primeListP
-
-isort_primes4 :: [Int]
-isort_primes4 = isort primeList
-
-psort_primes4 :: [Int]
-psort_primes4 = psort primeList
-
-psort_primes4D :: [Int]
-psort_primes4D = psort primeListD
-
-main :: [Int]
-main = psort_primes4
-
-mainD :: [Int]
-mainD = psort_primes4D
-
-psort_primes8 :: [Int]
-psort_primes8 =
-  psort [primes!!307, primes!!306, primes!!305, primes!!304,
-         primes!!303, primes!!302, primes!!301, primes!!300]
+primeListP :: Curry (ListND Int)
+primeListP = liftE (return primeList)

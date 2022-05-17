@@ -1,9 +1,10 @@
-{-# OPTIONS_GHC -fplugin Plugin.CurryPlugin #-}
-module NRev where
+module NRevD where
 -- A purely functional benchmark: naive reverse
 
-import qualified NRevD
+import Plugin.CurryPlugin.Monad (Curry, liftE, NondetTag(..))
 import Nat
+
+{-# ANN module Nondeterministic #-}
 
 add :: Nat -> Nat -> Nat
 add O     n = n
@@ -52,7 +53,7 @@ natList (S x) = (S x) : (natList x)
 
 cond :: Bool -> a -> a
 cond True x = x
-cond _ _    = failed
+cond _ _    = error ""
 
 nfList :: [a] -> [a]
 nfList xs = cond (isList xs) xs
@@ -72,5 +73,5 @@ nrev_16384 = isList (rev (natList nat16384))
 main :: Bool
 main = nrev_4096
 
-mainD :: Bool
-mainD = NRevD.mainP
+mainP :: Curry Bool
+mainP = liftE (return main)

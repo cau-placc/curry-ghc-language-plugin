@@ -33,6 +33,16 @@ library
     SortPrimes
     TakInt
     TakPeano
+    NRevD
+    Nat
+    PermSortPeanoD
+    PrimesHOD
+    QueensD
+    ReverseHOD
+    SelectD
+    SortPrimesD
+    TakIntD
+    TakPeanoD
     Main
 
 executable sandbox
@@ -51,6 +61,16 @@ executable sandbox
     SortPrimes
     TakInt
     TakPeano
+    NRevD
+    Nat
+    PermSortPeanoD
+    PrimesHOD
+    QueensD
+    ReverseHOD
+    SelectD
+    SortPrimesD
+    TakIntD
+    TakPeanoD
   main-is: Main.hs
   ghc-options:
     -O2

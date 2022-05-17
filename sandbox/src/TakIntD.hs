@@ -1,7 +1,8 @@
-{-# OPTIONS_GHC -fplugin Plugin.CurryPlugin #-}
-module TakInt where
+module TakIntD where
 
-import qualified TakIntD
+import Plugin.CurryPlugin.Monad
+
+{-# ANN module Nondeterministic #-}
 
 tak :: Int -> Int -> Int -> Int
 tak x y z = if x <= y
@@ -18,5 +19,5 @@ takInt_33_17_8 = tak 33 17 8
 main :: Int
 main = takInt_24_16_8
 
-mainD :: Int
-mainD = TakIntD.mainP
+mainP :: Curry Int
+mainP = liftE $ return main

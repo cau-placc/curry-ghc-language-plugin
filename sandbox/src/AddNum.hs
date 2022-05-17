@@ -50,3 +50,6 @@ addNum_10 = isZero (addSomeNum10 2000)
 
 main :: Bool
 main = addNum_10
+
+mainD :: Bool
+mainD = main

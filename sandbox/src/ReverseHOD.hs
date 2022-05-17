@@ -1,10 +1,12 @@
-{-# OPTIONS_GHC -fplugin Plugin.CurryPlugin #-}
-module ReverseHO where
+module ReverseHOD where
 -- Curry benchmark:
 -- linear reverse of a user-defined list with higher-order functions
 
-import Nat
-import qualified ReverseHOD
+import Plugin.CurryPlugin.Monad
+
+{-# ANN module Nondeterministic #-}
+
+data Nat = O | S Nat
 
 add :: Nat -> Nat -> Nat
 add O n = n
@@ -28,6 +30,8 @@ nat1M = mult nat16384 (mult nat16 four)
 nat4M = mult nat16384 nat256
 
 data List a = Nil | Cons a (List a)
+
+data MyBool = MyTrue | MyFalse
 
 --- Reverses the order of all elements in a list.
 rev :: List a -> List a
@@ -64,5 +68,5 @@ revHO_1M  = isList (rev (natList nat1M))
 main :: Bool
 main = revHO_1M
 
-mainD :: Bool
-mainD = ReverseHOD.mainP
+mainP :: Curry Bool
+mainP = liftE (return main)

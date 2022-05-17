@@ -1,8 +1,12 @@
-{-# OPTIONS_GHC -fplugin Plugin.CurryPlugin #-}
-module TakPeano where
+{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+module TakPeanoD where
 
 import Nat
-import qualified TakPeanoD
+import Plugin.CurryPlugin.Monad
+
+{-# ANN module Nondeterministic #-}
+
 
 data MyBool = MyTrue | MyFalse
 
@@ -20,9 +24,9 @@ double x = add x x
 
 dec :: Nat -> Nat
 dec (S x) = x
-dec _     = failed
+dec _     = error ""
 
-leq :: Nat -> Nat -> TakPeano.MyBool
+leq :: Nat -> Nat -> TakPeanoD.MyBool
 leq O     _     = MyTrue
 leq (S _) O     = MyFalse
 leq (S x) (S y) = leq x y
@@ -66,5 +70,5 @@ takPeano = takPeano_24_16_8
 main :: Nat
 main = takPeano_24_16_8 --takPeano_27_16_8
 
-mainD :: Nat
-mainD = TakPeanoD.mainP
+mainP :: Curry _
+mainP = liftE (return main)

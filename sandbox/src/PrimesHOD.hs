@@ -1,8 +1,9 @@
-{-# OPTIONS_GHC -fplugin Plugin.CurryPlugin #-}
-module PrimesHO where
+module PrimesHOD where
 -- Computing prime numbers via sieve and primitive higher-order functions
 
-import qualified PrimesHOD
+import Plugin.CurryPlugin.Monad
+
+{-# ANN module Nondeterministic #-}
 
 suCC :: Int -> Int
 suCC x = x + 1
@@ -12,7 +13,7 @@ isdivs n x = mod x n /= 0
 
 the_filter :: [Int] -> [Int]
 the_filter (n:ns) = myfilter (isdivs n) ns
-the_filter _      = failed
+the_filter _      = error ""
 
 primes :: [Int]
 primes = mymap myhead (myiterate the_filter (myiterate suCC 2))
@@ -32,12 +33,12 @@ mymap f (x:xs) = f x : mymap f xs
 
 myhead :: [Int] -> Int
 myhead (x : _) = x
-myhead _       = failed
+myhead _       = error ""
 
 at :: [Int] -> Int -> Int
 at (x:xs) n = if n==0  then x
                        else at xs (n - 1)
-at _      _ = failed
+at _      _ = error ""
 
 primesHO_1000, primesHO_2000 :: Int
 primesHO_1000 = at primes 1000
@@ -46,5 +47,5 @@ primesHO_2000 = at primes 2000
 main :: Int
 main = primesHO_2000
 
-mainD :: Int
-mainD = PrimesHOD.mainP
+mainP :: Curry Int
+mainP = liftE $ return main

@@ -1,11 +1,11 @@
-{-# OPTIONS_GHC -fplugin Plugin.CurryPlugin -Wno-unused-do-bind #-}
-module Queens where
-
-import qualified QueensD
-
+module QueensD where
 -- Compute the number of solutions to queens placements.
 -- This implementation uses prelude operations and list comprehensions,
 -- thus, higher-order operations like `map`.
+
+import Plugin.CurryPlugin.Monad
+
+{-# ANN module Nondeterministic #-}
 
 queens :: Int -> Int
 queens nq = length (gen nq nq)
@@ -26,5 +26,5 @@ queens_11 = queens 11
 main :: Int
 main = queens_11
 
-mainD :: Int
-mainD = QueensD.mainP
+mainP :: Curry Int
+mainP = liftE $ return queens_11
