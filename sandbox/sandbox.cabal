@@ -43,6 +43,7 @@ library
     SortPrimesD
     TakIntD
     TakPeanoD
+    SharingAcrossND
     Main
 
 executable sandbox
@@ -71,6 +72,7 @@ executable sandbox
     SortPrimesD
     TakIntD
     TakPeanoD
+    SharingAcrossND
   main-is: Main.hs
   ghc-options:
     -O2
