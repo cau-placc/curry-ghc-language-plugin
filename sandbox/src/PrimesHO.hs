@@ -46,5 +46,23 @@ primesHO_2000 = at primes 2000
 main :: Int
 main = primesHO_2000
 
+yesSharingAcrossND :: Int
+yesSharingAcrossND =
+  let p = at primes 799
+  in p ? p
+
+noSharingAcrossND :: Int
+noSharingAcrossND =
+  at primes 799 ? at primes 799
+
 mainD :: Int
 mainD = PrimesHOD.mainP
+
+yesSharingAcrossNDD :: Int
+yesSharingAcrossNDD =
+  let p = at PrimesHOD.primesP 799
+  in p ? p
+
+noSharingAcrossNDD :: Int
+noSharingAcrossNDD =
+  at PrimesHOD.primesP 799 ? at PrimesHOD.primesP 799

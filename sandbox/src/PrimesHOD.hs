@@ -2,6 +2,7 @@ module PrimesHOD where
 -- Computing prime numbers via sieve and primitive higher-order functions
 
 import Plugin.CurryPlugin.Monad
+import Plugin.CurryPlugin.BuiltIn (ListND)
 
 {-# ANN module Nondeterministic #-}
 
@@ -17,6 +18,9 @@ the_filter _      = error ""
 
 primes :: [Int]
 primes = mymap myhead (myiterate the_filter (myiterate suCC 2))
+
+primesP :: Curry (ListND Int)
+primesP = liftE (return primes)
 
 myfilter :: (Int -> Bool) -> [Int] -> [Int]
 myfilter _ []     = []
