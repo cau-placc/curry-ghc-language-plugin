@@ -1,6 +1,8 @@
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TupleSections   #-}
-{-# LANGUAGE LambdaCase      #-}
+{-# LANGUAGE TemplateHaskellQuotes #-}
+{-# LANGUAGE TupleSections         #-}
+{-# LANGUAGE LambdaCase            #-}
+{-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-|
 Module      : Plugin.CurryPlugin.THEval
 Description : TemplateHaskell functions to generate wrappers.
@@ -90,12 +92,15 @@ genEval sma fname args = do
     genHelp :: [(Name, Type)] -> Q Exp
     genHelp []           = error "cannot happen"
     genHelp [(v,_)]      = do
-      ex <- [| \vv vx -> vx (liftE (return vv)) |]
+      ex <- [| \vv vx -> vx (return (embedAsNondet vv)) |]
       return (AppE ex (VarE v))
     genHelp ((v,_):rest) = do
-      ex <- [| \inn vv vx -> vx (liftE (return vv)) >>= \(Func f) -> inn f |]
+      ex <- [| \inn vv vx -> vx (return (embedAsNondet vv)) >>= \(Func f) -> inn f |]
       inner <- genHelp rest
       return (foldl AppE ex [inner, VarE v])
+
+embedAsNondet :: Normalform Nondet a b => b -> a
+embedAsNondet = embed @Nondet
 
 -- | Name of the monad 'Nondet' used in the lifting.
 ndName :: Name

@@ -10,6 +10,8 @@
 {-# LANGUAGE UndecidableInstances   #-}
 {-# LANGUAGE ConstraintKinds        #-}
 {-# LANGUAGE MagicHash              #-}
+{-# LANGUAGE TypeApplications       #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
 {-# OPTIONS_GHC -Wno-orphans        #-}
 {-# OPTIONS_GHC -Wno-unused-foralls #-}
 {-|
@@ -48,6 +50,10 @@ type (:-->) m r s a b = (Nondet a -> Nondet b)
 -- | Alias for Shareable constraint specialized to the nondeterminism monad.
 type ShareableN a = Shareable Nondet a
 
+-- | Shortcut for transforming the value under a monadic content into its lifted variant.
+liftE :: forall m a b. Normalform m a b => m b -> m a
+liftE mx = mx P.>>= P.return P.. embed @m
+
 -- * Lifted list type and internal instances
 
 -- | Lifted defintion for Haskell's default list type '[]'
@@ -68,13 +74,12 @@ instance Shareable Nondet a => Shareable Nondet (ListND a) where
 
 -- | Normalform instance for lists
 instance Normalform Nondet a1 a2 => Normalform Nondet (ListND a1) [a2] where
-  nf mxs = mxs P.>>= \case
+  nf xs' = case xs' of
     Nil       -> P.return []
-    Cons x xs -> (:) P.<$> nf x P.<*> nf xs
-  liftE mxs = mxs P.>>= \case
-    []   -> P.return Nil
-    x:xs -> Cons P.<$> P.return (liftE (P.return x))
-                 P.<*> P.return (liftE (P.return xs))
+    Cons x xs -> (:) P.<$> (x P.>>= nf) P.<*> (xs P.>>= nf)
+  embed xs' = case xs' of
+    []   -> Nil
+    x:xs -> Cons (P.return (embed @Nondet x)) (P.return (embed @Nondet xs))
 
 -- * Lifted tuple types and internal instances
 
@@ -97,9 +102,8 @@ instance (Shareable Nondet a, Shareable Nondet b) =>
 -- | Normalform instance for 2-ary tuple
 instance (Normalform Nondet a1 a2, Normalform Nondet b1 b2) =>
   Normalform Nondet (Tuple2ND a1 b1) (a2, b2) where
-    nf mxs = mxs P.>>= \(Tuple2 a b) -> (,) P.<$> nf a P.<*> nf b
-    liftE mxs = mxs P.>>= \(a, b) -> Tuple2 P.<$> P.return (liftE (P.return a))
-                                            P.<*> P.return (liftE (P.return b))
+    nf (Tuple2 a b) = (,) P.<$> (a P.>>= nf) P.<*> (b P.>>= nf)
+    embed (a, b) = Tuple2 (P.return (embed @Nondet a)) (P.return (embed @Nondet b))
 
 -- * Other lifted types and internal instances
 
@@ -117,10 +121,8 @@ instance (Shareable Nondet a) =>
 -- | Normalform instance for Ratios
 instance (Normalform Nondet a1 a2) =>
   Normalform Nondet (RatioND a1) (P.Ratio a2) where
-    nf mxs = mxs P.>>= \(a :% b) -> (P.:%) P.<$> nf a P.<*> nf b
-    liftE mxs = mxs P.>>= \(a P.:% b) ->
-      (:%) P.<$> P.return (liftE (P.return a))
-           P.<*> P.return (liftE (P.return b))
+    nf (a :% b) = (P.:%) P.<$> (a P.>>= nf) P.<*> (b P.>>= nf)
+    embed (a P.:% b) = P.return (embed @Nondet a) :% P.return (embed @Nondet b)
 
 -- | Lifted defintion for Haskell's 'Rational' type
 type RationalND = RatioND Integer
@@ -307,7 +309,7 @@ instance ShowND Double where
 instance ShowND Char where
   show = rtrnFunc $ \x -> liftE (P.show P.<$> x)
   showList = rtrnFunc $ \ls -> rtrnFunc $ \s ->
-    liftE (P.showList P.<$> nf ls P.<*> nf s)
+    liftE (P.showList P.<$> (ls P.>>= nf) P.<*> (s P.>>= nf))
 
 instance (ShowND a, ShareableN a) => ShowND (ListND a) where
   show = rtrnFunc $ \xs -> apply2 showList xs (P.return Nil)
@@ -530,11 +532,11 @@ class (ShareableN a, NumND a) => FractionalND a where
 
 instance FractionalND Float where
   (/) = liftNondet2 (P./)
-  fromRational = rtrnFunc $ \r -> P.fromRational P.<$> nf r
+  fromRational = rtrnFunc $ \r -> P.fromRational P.<$> (r P.>>= nf)
 
 instance FractionalND Double where
   (/) = liftNondet2 (P./)
-  fromRational = rtrnFunc $ \r -> P.fromRational P.<$> nf r
+  fromRational = rtrnFunc $ \r -> P.fromRational P.<$> (r P.>>= nf)
 
 -- * Lifted Real type class, instances and functions
 

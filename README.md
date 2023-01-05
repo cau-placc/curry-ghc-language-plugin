@@ -1,22 +1,20 @@
-# Curry plugin for GHC
+# Language Plugin
 
 The goal of this project is to make prototypical implementation of a plugin
 for the Glasgow Haskell Compiler (GHC),
-such that the GHC can be used to compile Curry programs.
+such that the GHC can be used to compile programs that contain an implicit monadic effect.
 
 ## Compatibility
 
-This plugin only works with a specific GHC 9.1 [commit](https://gitlab.haskell.org/ghc/ghc/-/commit/1370eda7a53f5dfc88afe705b2ffecb1d5544ec7) and cannot be used with other versions. It will be updated to 9.2, as soon as that GHC is released. 
-There is a [docker image](https://hub.docker.com/repository/docker/anonymousplugin/ghc-language-plugin) with the pre-built plugins and the specific GHC.
+This plugin only works with GHC 9.2 and cannot be used with other versions.
 
-## Using the plugin
-The plugin can be activated within a module by adding both
-`{-# LANGUAGE NoImplicitPrelude #-} ` and
-`{-# OPTIONS_GHC -fplugin Plugin.CurryPlugin #-}` to the top of the file.
+## Examples
+The plugin has been used to create two example languages.
+- One Curry-Style functional logic language [curry-ghc-language-plugin](https://github.com/cau-placc/curry-ghc-language-plugin)
+- One strict language with IO side effects (similar to ML) [ml-ghc-language-plugin](https://github.com/cau-placc/ml-ghc-language-plugin)
 
-A replacement Prelude can be imported from `import Plugin.CurryPlugin.Prelude`.
-This brings a few basic functions, data types and type classes into scope, as well as
-nondeterministic choice `(?) :: a -> a -> a` and `failed :: a`.
+A fork of this has also been used to create a plugin for automatic function Inversion in Haskell. 
+Details are in [this paper](https://dl.acm.org/doi/10.1145/3471874.3472982) and the project can be found at (https://github.com/cau-placc/inversion-plugin).
 
 To capture all results of a nondeterministic computation, the user can import the computation in an ordinary Haskell module and use some of the following functions from `Plugin.CurryPlugin.Encapsulation` to get all results.
 

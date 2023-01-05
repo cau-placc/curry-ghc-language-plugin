@@ -134,7 +134,7 @@ modeOp BFS = bfs
 -- as their normal form in a tree.
 allValuesNF :: Normalform Nondet a b
             => Nondet a -> Tree b
-allValuesNF = allValues . nf
+allValuesNF ma = allValues (ma >>= nf)
 
 -- | Collect the results of a nondeterministic computation in a tree.
 allValues :: Nondet a -> Tree a
@@ -148,11 +148,8 @@ instance (Sharing m) => Shareable m (a --> b) where
 
 instance (Normalform Nondet a1 a2, Normalform Nondet b1 b2)
   => Normalform Nondet (a1 --> b1) (a2 -> b2) where
-    nf    mf =
-      mf >> return (error "Plugin Error: Cannot capture function types")
-    liftE mf = do
-      f <- mf
-      return (Func (liftE . fmap f . nf))
+    nf _ =return (error "Plugin Error: Cannot capture function types")
+    embed f = Func (\ma -> embed @Nondet . f <$> (ma >>= nf))
 
 -- | Lift a unary function with the lifting scheme of the plugin.
 liftNondet1 :: (a -> b) -> Nondet (a --> b)
