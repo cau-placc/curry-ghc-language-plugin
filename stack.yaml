@@ -8,5 +8,5 @@ extra-deps:
   - split-0.2.3.4
 ghc-options :
   "$everything": -Wall
-system-ghc: true
 allow-newer: true
+compiler: ghc-git-1370eda7a53f5dfc88afe705b2ffecb1d5544ec7-quickest
